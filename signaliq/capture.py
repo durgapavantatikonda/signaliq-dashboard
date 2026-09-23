@@ -8,6 +8,9 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
+
+from .vendors import match_vendor
 
 
 def replay_request(url: str, method: str = "GET",
@@ -211,6 +214,16 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
         exit_geo = _detect_exit_geo(context)
         page = context.new_page()
 
+        # Live tally so the person watching can see ad-tech vendors show up
+        # in real time instead of staring at one static message for the
+        # whole capture. This is participation frequency (how often a
+        # vendor's domain was hit), not bid price or auction win/loss -
+        # actual bid economics are resolved server-side between exchanges
+        # and are usually invisible to (or encrypted from) the browser, so
+        # they can't be shown here honestly.
+        vendor_tally: dict = {}
+        total_count = [0]
+
         def on_response(response):
             # This callback fires on EVERY network response - hundreds of
             # times per capture - so any single unhandled exception here
@@ -240,6 +253,22 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
                     except Exception:
                         entry["response_body"] = ""
                 captured.append(entry)
+
+                total_count[0] += 1
+                try:
+                    host = urlparse(entry["url"]).netloc.lower()
+                    vm = match_vendor(host)
+                except Exception:
+                    vm = None
+                if vm:
+                    vendor_tally[vm[1]] = vendor_tally.get(vm[1], 0) + 1
+                    ad_count = sum(vendor_tally.values())
+                    top = sorted(vendor_tally.items(), key=lambda kv: -kv[1])[:3]
+                    top_str = ", ".join(f"{k} ({v})" for k, v in top)
+                    _progress(f"{total_count[0]} requests captured, {ad_count} ad-related "
+                             f"so far. Most active: {top_str}")
+                elif total_count[0] % 20 == 0:
+                    _progress(f"{total_count[0]} requests captured so far...")
             except Exception:
                 pass  # never let one bad response kill the whole capture
 
