@@ -284,9 +284,46 @@ $('cap-run').addEventListener('click', async () => {
 });
 
 async function pollJob(jobId){
+  const startedAt = Date.now();
+  const MAX_WAIT_MS = 6 * 60 * 1000; // give up after 6 minutes of no result
+  let consecutiveFailures = 0;
+
   const poll = async () => {
-    const r = await fetch(`/api/jobs/${jobId}`);
-    const job = await r.json();
+    if(Date.now() - startedAt > MAX_WAIT_MS){
+      statusEl('cap-status', 'Gave up after 6 minutes with no result. The server may have '+
+        'restarted mid-capture (common on low-memory free hosting tiers with heavy pages) '+
+        '- check your host\'s logs for a crash/OOM around this time. Try a lighter site or '+
+        'a shorter duration to confirm the pipeline still works.', 'err');
+      $('cap-run').disabled = false;
+      return;
+    }
+
+    let r, job;
+    try{
+      r = await fetch(`/api/jobs/${jobId}`);
+      job = await r.json();
+    }catch(e){
+      consecutiveFailures++;
+      if(consecutiveFailures >= 4){
+        statusEl('cap-status', 'Lost contact with the server after several attempts - it '+
+          'likely restarted (crash, redeploy, or free-tier sleep). Refresh the page; if a '+
+          'capture was running, it did not finish and needs to be re-run.', 'err');
+        $('cap-run').disabled = false;
+        return;
+      }
+      statusEl('cap-status', 'Connection hiccup, retrying... ('+consecutiveFailures+'/4)');
+      setTimeout(poll, 2000);
+      return;
+    }
+    consecutiveFailures = 0;
+
+    if(!r.ok || !job || !job.status){
+      statusEl('cap-status', 'Server returned an unexpected response (status '+r.status+
+        ') - it may have restarted. Refresh and re-run if this persists.', 'err');
+      $('cap-run').disabled = false;
+      return;
+    }
+
     if(job.status === 'error'){
       statusEl('cap-status', 'Error: '+job.message, 'err');
       $('cap-run').disabled = false;
