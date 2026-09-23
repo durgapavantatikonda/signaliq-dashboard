@@ -177,6 +177,12 @@
       </div>
       <label>Label (optional)</label>
       <input id="cap-target" type="text" placeholder="e.g. Homepage Player" />
+      <label style="margin-top:14px;">Proxy (optional — for geo-targeted ads, e.g. US demand)</label>
+      <input id="cap-proxy" type="text" placeholder="http://host:port" />
+      <div class="row2">
+        <div><label>Proxy username</label><input id="cap-proxy-user" type="text" /></div>
+        <div><label>Proxy password</label><input id="cap-proxy-pass" type="password" /></div>
+      </div>
       <div class="btn-row">
         <button class="primary" id="cap-run" style="flex:1;">Run capture</button>
       </div>
@@ -263,6 +269,9 @@ $('cap-run').addEventListener('click', async () => {
     duration_seconds: parseInt($('cap-dur').value||'60',10),
     target_name: $('cap-target').value,
     baseline_daily_revenue: parseFloat($('cap-rev').value||'5000'),
+    proxy_server: $('cap-proxy').value,
+    proxy_username: $('cap-proxy-user').value,
+    proxy_password: $('cap-proxy-pass').value,
   };
   try{
     const r = await fetch('/api/capture', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
@@ -284,7 +293,16 @@ async function pollJob(jobId){
       return;
     }
     if(job.status === 'done'){
-      statusEl('cap-status', 'Done — '+ (job.capture_stats ? job.capture_stats.requests_captured+' requests captured.' : ''), 'ok');
+      const cs = job.capture_stats || {};
+      const consentMsg = cs.consent_accepted ? ' Cookie consent auto-accepted.' : (cs.consent_accepted === false ? ' No consent banner found/accepted.' : '');
+      const proxyMsg = cs.proxy_used ? ' Routed via proxy.' : '';
+      let geoMsg = '';
+      if(cs.exit_geo && cs.exit_geo.country){
+        geoMsg = ` Exit location: ${cs.exit_geo.city ? cs.exit_geo.city+', ' : ''}${cs.exit_geo.country} (${cs.exit_geo.ip}).`;
+      } else if(cs.proxy_used){
+        geoMsg = ' Could not verify exit location (geo-IP lookup failed) — proxy may still be working, just unconfirmed.';
+      }
+      statusEl('cap-status', 'Done — '+ (cs.requests_captured!=null ? cs.requests_captured+' requests captured.' : '') + consentMsg + proxyMsg + geoMsg, 'ok');
       $('cap-run').disabled = false;
       currentSession = job.session_id;
       await refreshSessions();
@@ -321,10 +339,12 @@ $('paste-run').addEventListener('click', async () => {
 // ---------------- Render a session's report ----------------
 function gaugeColor(pct){ return pct>=75 ? 'var(--ok)' : pct>=40 ? 'var(--warn)' : 'var(--crit)'; }
 function riskColor(pct){ return pct>=60 ? 'var(--crit)' : pct>=25 ? 'var(--warn)' : 'var(--ok)'; }
+const NO_DATA_COLOR = '#5f6779';
 
 function render(data){
   const {audit, audience, traffic} = data;
   const display = data.display || {vendors_detected:[], vendors_by_category:{}, ad_units:[], sizes_requested:[], consent_signals_seen:{}, per_request:[]};
+  const plainSummary = data.plain_summary || [];
   const s = audit.scores;
 
   const main = $('main');
@@ -337,22 +357,35 @@ function render(data){
       <div class="audit-id">AUDIT ${audit.audit_id}</div>
     </div>
 
+    ${plainSummary.length ? `
+    <div class="panel-box" style="border-color:#5b9bff44;background:#5b9bff0a;margin-bottom:18px;">
+      <h4 style="color:var(--info);">In plain English</h4>
+      <ul style="margin:0;padding-left:18px;">
+        ${plainSummary.map(line => `<li style="font-size:13px;line-height:1.65;margin-bottom:6px;">${escapeHtml(line)}</li>`).join('')}
+      </ul>
+    </div>` : ''}
+
+    ${!s.has_ad_traffic ? `
+    <div class="panel-box" style="border-color:#f0a94066;background:#f0a94011;margin-bottom:18px;">
+      <h4 style="color:var(--warn);">No Ad Traffic Detected</h4>
+      <p style="font-size:12.5px;line-height:1.6;">Zero OpenRTB/VAST/Display/Header-Bidding requests were captured — the gauges below are unscored (not a health measurement). See the Anomalies &amp; RCA tab for likely causes and what to check.</p>
+    </div>` : ''}
     <div class="gauge-row">
       <div class="gauge-card">
         <div class="glabel">SIGNAL QUALITY</div>
-        ${arcSvg(s.signal_quality, gaugeColor(s.signal_quality))}
-        <div class="gval" style="color:${gaugeColor(s.signal_quality)}">${Math.round(s.signal_quality)}%</div>
+        ${s.has_ad_traffic ? arcSvg(s.signal_quality, gaugeColor(s.signal_quality)) : arcSvg(0, NO_DATA_COLOR)}
+        <div class="gval" style="color:${s.has_ad_traffic ? gaugeColor(s.signal_quality) : NO_DATA_COLOR}">${s.has_ad_traffic ? Math.round(s.signal_quality)+'%' : 'N/A'}</div>
       </div>
       <div class="gauge-card">
         <div class="glabel">MONETIZATION READINESS</div>
-        ${arcSvg(s.monetization_readiness, gaugeColor(s.monetization_readiness))}
-        <div class="gval" style="color:${gaugeColor(s.monetization_readiness)}">${Math.round(s.monetization_readiness)}%</div>
+        ${s.has_ad_traffic ? arcSvg(s.monetization_readiness, gaugeColor(s.monetization_readiness)) : arcSvg(0, NO_DATA_COLOR)}
+        <div class="gval" style="color:${s.has_ad_traffic ? gaugeColor(s.monetization_readiness) : NO_DATA_COLOR}">${s.has_ad_traffic ? Math.round(s.monetization_readiness)+'%' : 'N/A'}</div>
       </div>
       <div class="gauge-card">
         <div class="glabel">DAILY REVENUE RISK</div>
-        ${arcSvg(s.risk_pct, riskColor(s.risk_pct))}
-        <div class="gval" style="color:${riskColor(s.risk_pct)}">$${Math.round(s.daily_revenue_risk).toLocaleString()}</div>
-        <div class="greason">${escapeHtml(audit.rca ? '' : '')}${s.risk_pct}% of baseline — see RCA tab for why</div>
+        ${s.has_ad_traffic ? arcSvg(s.risk_pct, riskColor(s.risk_pct)) : arcSvg(0, NO_DATA_COLOR)}
+        <div class="gval" style="color:${s.has_ad_traffic ? riskColor(s.risk_pct) : NO_DATA_COLOR}">${s.has_ad_traffic ? '$'+Math.round(s.daily_revenue_risk).toLocaleString() : 'N/A'}</div>
+        <div class="greason">${s.has_ad_traffic ? s.risk_pct+'% of baseline — see RCA tab for why' : 'No ad traffic to assess risk against'}</div>
       </div>
     </div>
 

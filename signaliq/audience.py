@@ -260,3 +260,77 @@ def build_display_signals(entries: list) -> dict:
         "consent_signals_seen": consent_seen,
         "per_request": per_request,
     }
+def build_plain_summary(audience: dict, display: dict) -> list:
+    """Turn the OpenRTB audience profile + display/header-bidding signals
+    into a handful of plain-English sentences a non-technical teammate can
+    read without knowing what schain, EIDs, or TCF mean. This exists because
+    the two data sources cover different kinds of traffic (OpenRTB JSON
+    bodies vs. browser header-bidding query params) and showing them as two
+    separate jargon-heavy panels reads as broken/empty even when real data
+    was found - this merges them into one coherent read.
+    """
+    lines = []
+    profile = audience.get("profile") or {}
+    vendors = display.get("vendors_detected") or []
+    consent = display.get("consent_signals_seen") or {}
+
+    if vendors:
+        names = [v["vendor"] for v in vendors]
+        shown = ", ".join(names[:6])
+        more = f" and {len(names) - 6} more" if len(names) > 6 else ""
+        lines.append(f"This page shows ads through {len(names)} ad platform"
+                     f"{'s' if len(names) != 1 else ''}: {shown}{more}.")
+    else:
+        lines.append("No ad platforms were detected firing on this page during "
+                     "the capture - either it doesn't run programmatic ads, or "
+                     "they didn't load in time (try a longer capture duration).")
+
+    id_providers = (profile.get("identity_providers") or [])
+    if id_providers:
+        lines.append(f"Visitors can be matched to an ad identity using: "
+                     f"{', '.join(id_providers)}.")
+    elif vendors and any("Identity Sync" in c for c in
+                          (display.get("vendors_by_category") or {})):
+        lines.append("Identity-sync pixels fired (matching visitors to ad "
+                     "profiles), but the specific ID providers weren't captured "
+                     "in a readable format.")
+    else:
+        lines.append("No cookie-matching or ID-sync signals were seen, so ads "
+                     "here likely can't be personally targeted using "
+                     "third-party identity providers.")
+
+    gdpr_n, usp_n, gpp_n = (consent.get("gdpr_consent", 0),
+                            consent.get("us_privacy", 0), consent.get("gpp", 0))
+    if gdpr_n or usp_n or gpp_n:
+        parts = []
+        if gdpr_n:
+            parts.append(f"GDPR consent {gdpr_n}x")
+        if usp_n:
+            parts.append(f"US privacy signal {usp_n}x")
+        if gpp_n:
+            parts.append(f"GPP consent {gpp_n}x")
+        lines.append("Before showing ads, this page sent: " + ", ".join(parts) + ".")
+    elif profile.get("consent_string_present"):
+        lines.append("A consent string was present on ad requests - privacy "
+                     "signals are being passed correctly.")
+    else:
+        lines.append("No privacy/consent signals were seen on any ad request - "
+                     "worth checking if that's expected for this site's audience.")
+
+    if profile.get("device_type", "Unknown") != "Unknown" or profile.get("geo_country"):
+        device_bits = [b for b in (profile.get("device_type"), profile.get("os")) if b and b != "Unknown"]
+        geo_bits = [b for b in (profile.get("geo_city"), profile.get("geo_country")) if b]
+        bits = []
+        if device_bits:
+            bits.append("device: " + " ".join(device_bits))
+        if geo_bits:
+            bits.append("location: " + ", ".join(geo_bits))
+        if bits:
+            lines.append("Detected " + " and ".join(bits) + " from app/CTV-style ad requests.")
+    else:
+        lines.append("Device and location details weren't available from this "
+                     "capture - that's normal for browser-based (header "
+                     "bidding) ad delivery, since only app/CTV-style ad "
+                     "requests carry those fields directly.")
+
+    return lines
