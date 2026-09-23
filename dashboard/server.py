@@ -137,6 +137,15 @@ def _session_detail(session_id: str, result: AuditResult) -> dict:
         {
             "id": e.id, "category": e.category, "method": e.method,
             "status": e.status, "url": e.url, "vendor": getattr(e, "vendor", ""),
+            "timestamp": e.started_at,
+            "request_headers": e.request_headers,
+            "response_headers": e.response_headers,
+            # Truncated - full bodies can be up to 2MB each and a session
+            # can have hundreds of requests, so sending everything in full
+            # would bloat the payload to the browser for little benefit;
+            # this is plenty for a manual "advanced review" read.
+            "request_body": (e.request_body or "")[:5000],
+            "response_body": (e.response_body or "")[:5000],
         }
         for e in result.entries
     ]

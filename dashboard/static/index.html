@@ -477,6 +477,7 @@ function render(data){
   });
 
   wireReplay();
+  wireTrafficTable(traffic);
 }
 
 function arcSvg(pct, color){
@@ -665,23 +666,81 @@ function renderIssues(issues){
   </div>`;
 }
 
+const AD_CATEGORIES = new Set([
+  'OpenRTB', 'VAST', 'SSAI', 'Display Ad', 'Header Bidding',
+  'Identity Sync', 'Verification', 'Consent/CMP', 'Tracking Pixel',
+]);
+
+function formatTs(ts){
+  if(!ts) return '—';
+  const n = typeof ts === 'string' ? parseFloat(ts) : ts;
+  if(!n || isNaN(n)) return '—';
+  const d = new Date(n * 1000);
+  return d.toLocaleTimeString([], {hour12: false}) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+}
+
 function renderTrafficTable(traffic){
+  const adOnly = traffic.filter(t => AD_CATEGORIES.has(t.category));
+  const adCount = adOnly.length;
   return `<div class="panel-box">
-    <h4>Captured Requests (${traffic.length})</h4>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <h4 style="margin:0;">Captured Requests</h4>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;margin:0;">
+        <input type="checkbox" id="traffic-ad-filter" checked style="width:auto;margin:0;" />
+        Ad requests only (${adCount} of ${traffic.length})
+      </label>
+    </div>
     <table>
-      <thead><tr><th>ID</th><th>Category</th><th>Vendor</th><th>Method</th><th>Status</th><th>URL</th></tr></thead>
-      <tbody>
-        ${traffic.map(t=>`<tr>
-          <td>${t.id}</td>
-          <td><span class="cat-tag" style="background:${(CAT_COLORS[t.category]||'#5f6779')}22;color:${CAT_COLORS[t.category]||'#8993a8'}">${t.category}</span></td>
-          <td>${escapeHtml(t.vendor||'—')}</td>
-          <td>${t.method}</td>
-          <td>${t.status ?? '—'}</td>
-          <td class="url-cell" title="${escapeHtml(t.url)}">${escapeHtml(t.url)}</td>
-        </tr>`).join('')}
-      </tbody>
+      <thead><tr><th>ID</th><th>Time</th><th>Category</th><th>Vendor</th><th>Method</th><th>Status</th><th>URL</th></tr></thead>
+      <tbody id="traffic-tbody"></tbody>
     </table>
   </div>`;
+}
+
+function _trafficRows(rows){
+  return rows.map(t=>`
+    <tr class="traffic-row" data-id="${t.id}" style="cursor:pointer;">
+      <td>${t.id}</td>
+      <td>${formatTs(t.timestamp)}</td>
+      <td><span class="cat-tag" style="background:${(CAT_COLORS[t.category]||'#5f6779')}22;color:${CAT_COLORS[t.category]||'#8993a8'}">${t.category}</span></td>
+      <td>${escapeHtml(t.vendor||'—')}</td>
+      <td>${t.method}</td>
+      <td>${t.status ?? '—'}</td>
+      <td class="url-cell" title="${escapeHtml(t.url)}">${escapeHtml(t.url)}</td>
+    </tr>
+    <tr class="traffic-detail" data-detail-for="${t.id}" style="display:none;">
+      <td colspan="7">
+        <div class="replay-result" style="margin-top:0;">
+<b>Request headers:</b>
+${escapeHtml(JSON.stringify(t.request_headers || {}, null, 2))}
+
+<b>Response headers:</b>
+${escapeHtml(JSON.stringify(t.response_headers || {}, null, 2))}
+${t.request_body ? `\n<b>Request body:</b>\n${escapeHtml(t.request_body)}` : ''}
+${t.response_body ? `\n<b>Response body (truncated):</b>\n${escapeHtml(t.response_body)}` : ''}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function wireTrafficTable(traffic){
+  const tbody = document.getElementById('traffic-tbody');
+  const checkbox = document.getElementById('traffic-ad-filter');
+  if(!tbody || !checkbox) return;
+
+  const draw = () => {
+    const rows = checkbox.checked ? traffic.filter(t => AD_CATEGORIES.has(t.category)) : traffic;
+    tbody.innerHTML = _trafficRows(rows);
+    tbody.querySelectorAll('.traffic-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const detail = tbody.querySelector(`.traffic-detail[data-detail-for="${row.dataset.id}"]`);
+        if(detail) detail.style.display = detail.style.display === 'none' ? 'table-row' : 'none';
+      });
+    });
+  };
+
+  checkbox.addEventListener('change', draw);
+  draw();
 }
 
 function renderReplayPanel(){
