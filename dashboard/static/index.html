@@ -279,14 +279,14 @@ $('cap-run').addEventListener('click', async () => {
   try{
     const r = await fetch('/api/capture', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     const {job_id} = await r.json();
-    pollJob(job_id);
+    pollJob(job_id, url);
   }catch(e){
     statusEl('cap-status', 'Request failed: '+e, 'err');
     $('cap-run').disabled = false;
   }
 });
 
-async function pollJob(jobId){
+async function pollJob(jobId, capturedUrl){
   const startedAt = Date.now();
   const MAX_WAIT_MS = 6 * 60 * 1000; // give up after 6 minutes of no result
   let consecutiveFailures = 0;
@@ -351,6 +351,7 @@ async function pollJob(jobId){
     }
     const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
     statusEl('cap-status', `[${elapsedSec}s] ` + (job.message || job.status));
+    if(job.live_stats) renderLiveCapture(job.live_stats, capturedUrl);
     setTimeout(poll, 1200);
   };
   poll();
@@ -381,6 +382,38 @@ $('paste-run').addEventListener('click', async () => {
 function gaugeColor(pct){ return pct>=75 ? 'var(--ok)' : pct>=40 ? 'var(--warn)' : 'var(--crit)'; }
 function riskColor(pct){ return pct>=60 ? 'var(--crit)' : pct>=25 ? 'var(--warn)' : 'var(--ok)'; }
 const NO_DATA_COLOR = '#5f6779';
+
+function renderLiveCapture(live, capturedUrl){
+  const main = $('main');
+  const total = live.total || 0;
+  const tally = live.vendor_tally || {};
+  const sorted = Object.entries(tally).sort((a,b) => b[1] - a[1]);
+  const adTotal = sorted.reduce((sum, [,n]) => sum + n, 0);
+  main.innerHTML = `
+    <div class="main-head">
+      <div>
+        <h2>${escapeHtml(capturedUrl || '')}</h2>
+        <div class="sub" style="color:var(--ok);">● Capture in progress — live</div>
+      </div>
+    </div>
+    <div class="panel-box">
+      <h4>Live so far</h4>
+      <div class="profile-grid" style="margin-bottom:16px;">
+        ${pf('Requests captured', total)}
+        ${pf('Ad-related', adTotal)}
+        ${pf('Vendors seen', sorted.length)}
+      </div>
+      ${sorted.length ? `
+        <div class="pk" style="margin-bottom:8px;">Vendors by activity</div>
+        <div class="chip-list">
+          ${sorted.map(([v,n]) => `<span class="chip">${escapeHtml(v)} × ${n}</span>`).join('')}
+        </div>
+      ` : `<p style="font-size:12.5px;color:var(--muted);">No ad-tech vendors detected yet — still loading, or this page may not run any.</p>`}
+      <p style="font-size:11px;color:var(--muted-2);margin-top:16px;margin-bottom:0;">
+        This updates live while the capture runs. The full report (scores, RCA, audience signals) appears once it finishes.
+      </p>
+    </div>`;
+}
 
 function render(data){
   const {audit, audience, traffic} = data;

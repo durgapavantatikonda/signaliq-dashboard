@@ -152,10 +152,17 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
     finishes or errors - this makes real progress visible instead of one
     static message for the whole duration.
     """
-    def _progress(msg: str):
+    def _progress(msg: str, live: Optional[dict] = None):
         if progress_cb:
             try:
-                progress_cb(msg)
+                progress_cb(msg, live)
+            except TypeError:
+                # backward-compatible with any caller still expecting the
+                # old single-argument signature
+                try:
+                    progress_cb(msg)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -260,15 +267,17 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
                     vm = match_vendor(host)
                 except Exception:
                     vm = None
+                live = {"total": total_count[0], "vendor_tally": dict(vendor_tally)}
                 if vm:
                     vendor_tally[vm[1]] = vendor_tally.get(vm[1], 0) + 1
+                    live["vendor_tally"] = dict(vendor_tally)
                     ad_count = sum(vendor_tally.values())
                     top = sorted(vendor_tally.items(), key=lambda kv: -kv[1])[:3]
                     top_str = ", ".join(f"{k} ({v})" for k, v in top)
                     _progress(f"{total_count[0]} requests captured, {ad_count} ad-related "
-                             f"so far. Most active: {top_str}")
+                             f"so far. Most active: {top_str}", live)
                 elif total_count[0] % 20 == 0:
-                    _progress(f"{total_count[0]} requests captured so far...")
+                    _progress(f"{total_count[0]} requests captured so far...", live)
             except Exception:
                 pass  # never let one bad response kill the whole capture
 
