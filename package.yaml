@@ -1,0 +1,12 @@
+name: SignalIQ Actions
+description: Ad-tech traffic capture, compliance auditing, and RCA reports
+version: 1.0.0
+dependencies:
+  conda-forge:
+    - python=3.12
+  pypi:
+    - sema4ai-actions
+    - playwright
+    - mitmproxy
+post-install:
+  - playwright install chromium

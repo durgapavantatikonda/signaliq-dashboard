@@ -1,0 +1,17 @@
+[
+  {"url": "https://exchange.adnet.example/openrtb/v2/bid?src=ctv", "method": "POST", "status": 200,
+   "request_body": {"id": "auction-8842", "imp": [{"id": "1", "video": {"mimes": ["video/mp4"]}}],
+     "app": {"name": "StreamBox CTV", "bundle": ""},
+     "device": {"ifa": "00000000-0000-0000-0000-000000000000", "ua": "Mozilla/5.0 (SMART-TV; Tizen 7.0)", "make": "Samsung", "model": "", "os": "Tizen"},
+     "regs": {"ext": {"gdpr": 1}}, "user": {"ext": {"consent": ""}}, "source": {"ext": {}}},
+   "response_body": {"id": "auction-8842", "seatbid": []}},
+  {"url": "https://pubads.g.doubleclick.net/gampad/ads?output=vast&iu=/ctv/streambox", "method": "GET", "status": 200,
+   "response_body": "<?xml version=\"1.0\"?><VAST version=\"4.0\"><Error><![CDATA[https://pubads.g.doubleclick.net/pagead/interaction/?error=303]]></Error></VAST>"},
+  {"url": "https://ads.ssp.example/vast/4.0/tag?output=xml_vast&plc=preroll", "method": "GET", "status": 200,
+   "response_body": "<?xml version=\"1.0\"?><VAST version=\"4.0\"><Ad id=\"c77\"><InLine><AdSystem>SSP</AdSystem><Impression><![CDATA[]]></Impression><Creatives><Creative><Linear><TrackingEvents><Tracking event=\"start\"><![CDATA[https://t/s]]></Tracking><Tracking event=\"complete\"><![CDATA[https://t/c]]></Tracking></TrackingEvents><MediaFiles><MediaFile type=\"video/mp4\" width=\"1920\" height=\"1080\"><![CDATA[https://cdn.example/spring15.mp4]]></MediaFile></MediaFiles></Linear></Creative></Creatives></InLine></Ad></VAST>"},
+  {"url": "https://dai.google.com/linear/v1/hls/event/abc123/stream", "method": "POST", "status": 200, "response_body": "{\"stream_id\": \"s-991\"}"},
+  {"url": "https://t.example/imp?cb=1699", "method": "GET", "status": 200},
+  {"url": "https://cdn.stream.example/live/master.m3u8", "method": "GET", "status": 200},
+  {"url": "https://backend.streambox.example/api/v1/session/heartbeat", "method": "POST", "status": 200},
+  {"url": "https://static.streambox.example/assets/logo.png", "method": "GET", "status": 200}
+]
