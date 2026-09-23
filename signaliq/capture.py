@@ -130,7 +130,8 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
                         headless: bool = True,
                         proxy_server: str = "",
                         proxy_username: str = "",
-                        proxy_password: str = "") -> dict:
+                        proxy_password: str = "",
+                        progress_cb=None) -> dict:
     """Open a web app, log in if credentials given, simulate playback, and
     record all network traffic. Returns capture stats + output path.
 
@@ -140,7 +141,21 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
     that region. Ad servers geo-target off the request's real IP, which
     Playwright/Chromium cannot spoof on its own - a proxy with an exit IP
     in the target country is the only way around that short of a VPN.
+
+    progress_cb (optional): callable(str) invoked with a human-readable
+    status line at each real stage of the capture (browser launched, page
+    loaded, consent handled, scrolling, etc). Without this the caller has
+    no way to distinguish "working normally" from "stuck" until it either
+    finishes or errors - this makes real progress visible instead of one
+    static message for the whole duration.
     """
+    def _progress(msg: str):
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:
+                pass
+
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -185,6 +200,7 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
             timeout=30_000,  # fail fast with a clear error instead of
                              # hanging forever if launch still doesn't work
         )
+        _progress("Browser launched, opening a new tab...")
         context = browser.new_context(
             ignore_https_errors=True,
             viewport={"width": 1366, "height": 900},
@@ -228,12 +244,16 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
                 pass  # never let one bad response kill the whole capture
 
         page.on("response", on_response)
+        _progress(f"Opening {url} (up to 60s for the page to load)...")
         page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+        _progress(f"Page loaded ({len(captured)} requests so far). Checking for a cookie/consent banner...")
         page.wait_for_timeout(2000)
         consent_accepted = _accept_consent_banners(page)
+        _progress("Consent handled." if consent_accepted else "No consent banner found/accepted.")
         page.wait_for_timeout(1500)
 
         if username and password:
+            _progress("Attempting login with the provided credentials...")
             login_status = "failed"
             user_selectors = [
                 "input[type='email']", "input[name='email']",
@@ -300,7 +320,9 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
         except Exception:
             pass
 
-        _scroll_through_page(page, duration_s)
+        _progress(f"Playback/ad-slot triggers attempted. Scrolling through the page for {int(duration_s)}s to trigger lazy-loaded ads...")
+        _scroll_through_page(page, duration_s, _progress)
+        _progress(f"Scroll window done ({len(captured)} requests so far). Closing the browser...")
         browser.close()
 
     Path(out_path).write_text(json.dumps(captured, indent=2), encoding="utf-8")
@@ -310,7 +332,7 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
             "exit_geo": exit_geo}
 
 
-def _scroll_through_page(page, duration_s: float) -> None:
+def _scroll_through_page(page, duration_s: float, progress_cb=None) -> None:
     """Scroll down the page over the capture window instead of sitting still.
 
     Most display ad slots (GAM lazy-loaded units, infinite-scroll placements,
@@ -320,6 +342,13 @@ def _scroll_through_page(page, duration_s: float) -> None:
     (common on GAM slot refresh) get a chance to fire too. Video playback
     (started by the caller before this runs) continues throughout.
     """
+    def _p(msg):
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:
+                pass
+
     try:
         total_height = page.evaluate("document.body.scrollHeight") or 0
     except Exception:
@@ -339,6 +368,7 @@ def _scroll_through_page(page, duration_s: float) -> None:
             page.evaluate(f"window.scrollTo({{top: {target}, behavior: 'smooth'}})")
         except Exception:
             pass
+        _p(f"Scrolling ({i}/{steps})...")
         page.wait_for_timeout(step_ms)
 
     remaining_ms = int(duration_s * 1000) - (steps * step_ms)
@@ -347,4 +377,5 @@ def _scroll_through_page(page, duration_s: float) -> None:
             page.evaluate("window.scrollTo({top: 0, behavior: 'smooth'})")
         except Exception:
             pass
+        _p("Back near the top, letting above-the-fold units refresh...")
         page.wait_for_timeout(remaining_ms)

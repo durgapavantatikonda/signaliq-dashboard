@@ -113,6 +113,7 @@ def _run_capture_job(job_id: str, url: str, username: str, password: str,
             duration_s=float(duration_seconds), out_path=str(out_path),
             proxy_server=proxy_server, proxy_username=proxy_username,
             proxy_password=proxy_password,
+            progress_cb=lambda msg: _set_job(job_id, message=msg),
         )
         _set_job(job_id, status="auditing", message="Capture complete, running audit ...",
                  capture_stats=stats, session_id=session_id)
