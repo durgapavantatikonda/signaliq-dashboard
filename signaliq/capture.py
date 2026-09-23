@@ -211,6 +211,29 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
         exit_geo = _detect_exit_geo(context)
         page = context.new_page()
 
+        def _block_heavy_media(route):
+            # We never read the actual bytes of video/audio segments or web
+            # fonts (they're never OpenRTB/VAST JSON, never a tracking
+            # pixel/beacon, and we don't store their body either way) - but
+            # Chromium still has to download and decode them in real memory
+            # if we let them through, and on ad-heavy sites that's often the
+            # single biggest memory cost. Blocking only these two resource
+            # types costs nothing in what we detect: tracking pixels/beacons
+            # are "image"/"xhr"/"fetch" types, not "media", so they still
+            # load and get captured normally.
+            if route.request.resource_type in ("media", "font"):
+                try:
+                    route.abort()
+                except Exception:
+                    pass
+            else:
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+
+        page.route("**/*", _block_heavy_media)
+
         def on_response(response):
             # This callback fires on EVERY network response - hundreds of
             # times per capture - so any single unhandled exception here
