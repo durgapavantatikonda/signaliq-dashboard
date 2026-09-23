@@ -94,6 +94,7 @@ CONSENT_CMP = {
     "sourcepoint.mgr.consensu.org": "Sourcepoint CMP",
     "cmp.quantcast.com": "Quantcast Choice CMP",
     "cookielaw.org": "OneTrust CMP",
+    "cookiepro.com": "OneTrust CMP",
     "onetrust.com": "OneTrust CMP",
     "didomi.io": "Didomi CMP",
     "trustarc.com": "TrustArc CMP",

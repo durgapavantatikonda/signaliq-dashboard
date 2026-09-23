@@ -166,13 +166,13 @@
     <div class="rail-section">
       <div class="rail-h">CAPTURE WEBSITE</div>
       <label>URL</label>
-      <input id="cap-url" type="url" placeholder="https://example.com/player" />
+      <input id="cap-url" type="text" placeholder="example.com (https:// added automatically)" />
       <div class="row2">
         <div><label>Username (optional)</label><input id="cap-user" type="text" /></div>
         <div><label>Password (optional)</label><input id="cap-pass" type="password" /></div>
       </div>
       <div class="row2">
-        <div><label>Duration (sec)</label><input id="cap-dur" type="number" value="60" /></div>
+        <div><label title="Scroll/dwell time after the page loads - not total run time. Real total = page load + this + a few seconds overhead.">Scroll duration (sec)</label><input id="cap-dur" type="number" value="60" /></div>
         <div><label>Revenue/day $</label><input id="cap-rev" type="number" value="5000" /></div>
       </div>
       <label>Label (optional)</label>
@@ -260,7 +260,10 @@ async function loadSession(id){
 
 // ---------------- Run capture ----------------
 $('cap-run').addEventListener('click', async () => {
-  const url = $('cap-url').value.trim();
+  let url = $('cap-url').value.trim();
+  if(url && !/^https?:\/\//i.test(url)){
+    url = 'https://' + url; // let people type "example.com" instead of requiring the full https://
+  }
   if(!url){ statusEl('cap-status','Enter a URL first.','err'); return; }
   $('cap-run').disabled = true;
   statusEl('cap-status','Queuing capture...');

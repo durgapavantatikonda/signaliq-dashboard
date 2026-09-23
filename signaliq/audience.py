@@ -260,6 +260,8 @@ def build_display_signals(entries: list) -> dict:
         "consent_signals_seen": consent_seen,
         "per_request": per_request,
     }
+
+
 def build_plain_summary(audience: dict, display: dict) -> list:
     """Turn the OpenRTB audience profile + display/header-bidding signals
     into a handful of plain-English sentences a non-technical teammate can
