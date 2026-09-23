@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from signaliq.audit import run_audit, AuditResult  # noqa: E402
-from signaliq.audience import build_audience_profile, build_display_signals  # noqa: E402
+from signaliq.audience import build_audience_profile, build_display_signals, build_plain_summary  # noqa: E402
 from signaliq.classifier import classify_all  # noqa: E402
 from signaliq.parser import load_traffic  # noqa: E402
 from signaliq.capture import run_browser_capture, replay_request  # noqa: E402
@@ -64,6 +64,12 @@ DASHBOARD_PASS = os.environ.get("SIGNALIQ_PASS", "")
 @app.middleware("http")
 async def _require_login(request: Request, call_next):
     if not DASHBOARD_USER or not DASHBOARD_PASS:
+        return await call_next(request)
+    if request.method == "HEAD":
+        # Render (and most hosts) health-check with a bare HEAD / and no
+        # credentials. Blocking that with 401 can make the platform think
+        # the deploy is unhealthy and cycle the container. Real page loads
+        # are always GET, so exempting HEAD costs no real security.
         return await call_next(request)
     auth = request.headers.get("authorization", "")
     valid = False
@@ -125,6 +131,7 @@ def _run_capture_job(job_id: str, url: str, username: str, password: str,
 def _session_detail(session_id: str, result: AuditResult) -> dict:
     audience = build_audience_profile(result.entries)
     display = build_display_signals(result.entries)
+    plain_summary = build_plain_summary(audience, display)
     traffic = [
         {
             "id": e.id, "category": e.category, "method": e.method,
@@ -137,6 +144,7 @@ def _session_detail(session_id: str, result: AuditResult) -> dict:
         "audit": result.to_dict(),
         "audience": audience,
         "display": display,
+        "plain_summary": plain_summary,
         "traffic": traffic,
     }
 
@@ -311,7 +319,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
