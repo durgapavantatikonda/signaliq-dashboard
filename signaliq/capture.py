@@ -163,8 +163,27 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
             headless=headless,
-            args=["--disable-blink-features=AutomationControlled"],
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                # Memory-reduction flags for low-RAM hosts (e.g. Render's
+                # free 512MB tier). None of these change what gets captured -
+                # they just stop Chromium from doing background work that
+                # costs memory but doesn't matter for a headless, one-shot
+                # capture with no human watching the screen.
+                "--disable-software-rasterizer",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--js-flags=--max-old-space-size=256",
+            ],
             proxy=proxy_config,
+            timeout=30_000,  # fail fast with a clear error instead of
+                             # hanging forever if launch still doesn't work
         )
         context = browser.new_context(
             ignore_https_errors=True,
@@ -177,20 +196,36 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
         page = context.new_page()
 
         def on_response(response):
-            req = response.request
-            entry = {
-                "url": req.url, "method": req.method, "status": response.status,
-                "request_headers": dict(req.headers),
-                "response_headers": dict(response.headers),
-                "request_body": req.post_data or "", "timestamp": time.time(),
-            }
-            ct = (response.headers.get("content-type") or "").lower()
-            if any(t in ct for t in ("xml", "json", "text")):
+            # This callback fires on EVERY network response - hundreds of
+            # times per capture - so any single unhandled exception here
+            # (e.g. a gzip/binary POST body that Playwright's post_data
+            # can't UTF-8 decode, common on real Prebid/header-bidding
+            # calls) crashes the whole capture, and in production has been
+            # severe enough to take the whole server process down with it.
+            # Every risky access below is now individually guarded so one
+            # bad request can never derail the rest of the capture.
+            try:
+                req = response.request
                 try:
-                    entry["response_body"] = response.text()[:2_000_000]
+                    post_data = req.post_data or ""
                 except Exception:
-                    entry["response_body"] = ""
-            captured.append(entry)
+                    post_data = ""  # binary/gzip/undecodable body - skip it,
+                                    # not worth crashing the capture over
+                entry = {
+                    "url": req.url, "method": req.method, "status": response.status,
+                    "request_headers": dict(req.headers),
+                    "response_headers": dict(response.headers),
+                    "request_body": post_data, "timestamp": time.time(),
+                }
+                ct = (response.headers.get("content-type") or "").lower()
+                if any(t in ct for t in ("xml", "json", "text")):
+                    try:
+                        entry["response_body"] = response.text()[:2_000_000]
+                    except Exception:
+                        entry["response_body"] = ""
+                captured.append(entry)
+            except Exception:
+                pass  # never let one bad response kill the whole capture
 
         page.on("response", on_response)
         page.goto(url, wait_until="domcontentloaded", timeout=60_000)
