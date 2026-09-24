@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import time
 import urllib.request
@@ -11,6 +12,24 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from .vendors import match_vendor
+
+
+def _take_screenshot(page, quality: int = 35) -> Optional[str]:
+    """Best-effort JPEG screenshot of what the headless browser is actually
+    rendering right now, as a data: URI ready for an <img src>. This is the
+    only honest way to show "what is the automation seeing" - it captures
+    the real automated browser's view (including a CAPTCHA/bot-check page,
+    if that's what actually loaded), not a fresh load in the viewer's own
+    browser on their own network, which would show something completely
+    different and misleading. Low JPEG quality keeps the payload small
+    since this gets polled repeatedly during a capture.
+    """
+    try:
+        raw = page.screenshot(type="jpeg", quality=quality, timeout=5000)
+        b64 = base64.b64encode(raw).decode("ascii")
+        return f"data:image/jpeg;base64,{b64}"
+    except Exception:
+        return None
 
 
 def replay_request(url: str, method: str = "GET",
@@ -284,7 +303,8 @@ def run_browser_capture(url: str, username: str = "", password: str = "",
         page.on("response", on_response)
         _progress(f"Opening {url} (up to 60s for the page to load)...")
         page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-        _progress(f"Page loaded ({len(captured)} requests so far). Checking for a cookie/consent banner...")
+        _progress(f"Page loaded ({len(captured)} requests so far). Checking for a cookie/consent banner...",
+                 {"screenshot": _take_screenshot(page)})
         page.wait_for_timeout(2000)
         consent_accepted = _accept_consent_banners(page)
         _progress("Consent handled." if consent_accepted else "No consent banner found/accepted.")
@@ -380,10 +400,15 @@ def _scroll_through_page(page, duration_s: float, progress_cb=None) -> None:
     (common on GAM slot refresh) get a chance to fire too. Video playback
     (started by the caller before this runs) continues throughout.
     """
-    def _p(msg):
+    def _p(msg, live=None):
         if progress_cb:
             try:
-                progress_cb(msg)
+                progress_cb(msg, live)
+            except TypeError:
+                try:
+                    progress_cb(msg)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -406,7 +431,7 @@ def _scroll_through_page(page, duration_s: float, progress_cb=None) -> None:
             page.evaluate(f"window.scrollTo({{top: {target}, behavior: 'smooth'}})")
         except Exception:
             pass
-        _p(f"Scrolling ({i}/{steps})...")
+        _p(f"Scrolling ({i}/{steps})...", {"screenshot": _take_screenshot(page)})
         page.wait_for_timeout(step_ms)
 
     remaining_ms = int(duration_s * 1000) - (steps * step_ms)

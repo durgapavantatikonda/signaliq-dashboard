@@ -94,6 +94,17 @@ _jobs_lock = threading.Lock()
 
 def _set_job(job_id: str, **kw):
     with _jobs_lock:
+        # live_stats gets merged field-by-field into whatever's already
+        # there, not wholesale-replaced. Different progress calls report
+        # different subsets (a screenshot here, a vendor tally there) -
+        # a plain overwrite would make each new update erase the fields
+        # the previous update had, e.g. losing the last screenshot the
+        # moment a vendor-count-only update comes in right after it.
+        if "live_stats" in kw:
+            live = kw.pop("live_stats")
+            if live is not None:
+                existing = _jobs[job_id].get("live_stats") or {}
+                _jobs[job_id]["live_stats"] = {**existing, **live}
         _jobs[job_id].update(kw)
 
 
@@ -213,11 +224,18 @@ def api_capture(req: CaptureRequest):
     job_id = uuid.uuid4().hex[:12]
     with _jobs_lock:
         _jobs[job_id] = {"status": "queued", "message": "Queued.", "created": time.time()}
+    # If the form left the proxy fields blank, fall back to a server-wide
+    # default (set via DEFAULT_PROXY_SERVER/USER/PASS env vars) so the
+    # person running a capture doesn't have to paste the same proxy in
+    # every single time. An explicit value in the form always wins.
+    proxy_server = req.proxy_server or os.environ.get("DEFAULT_PROXY_SERVER", "")
+    proxy_username = req.proxy_username or os.environ.get("DEFAULT_PROXY_USERNAME", "")
+    proxy_password = req.proxy_password or os.environ.get("DEFAULT_PROXY_PASSWORD", "")
     t = threading.Thread(
         target=_run_capture_job,
         args=(job_id, req.url, req.username, req.password, req.duration_seconds,
               req.target_name, req.baseline_daily_revenue,
-              req.proxy_server, req.proxy_username, req.proxy_password),
+              proxy_server, proxy_username, proxy_password),
         daemon=True,
     )
     t.start()
