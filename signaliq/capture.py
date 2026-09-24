@@ -134,12 +134,26 @@ def _detect_exit_geo(context) -> Optional[dict]:
             resp = context.request.get(lookup_url, timeout=8000)
             if resp.ok:
                 data = resp.json()
+                org = data.get("org") or data.get("isp") or ""
                 return {
                     "ip": data.get("ip") or data.get("query", ""),
                     "country": data.get("country_name") or data.get("country", ""),
                     "country_code": data.get("country_code") or data.get("countryCode", ""),
                     "region": data.get("region") or data.get("regionName", ""),
                     "city": data.get("city", ""),
+                    # Who actually owns this IP - a residential ISP name
+                    # (Comcast, Jio, BSNL, ...) vs. a cloud provider name
+                    # (Google LLC, Amazon.com, Microsoft Corporation, ...)
+                    # is the real signal bot-detection systems check, not
+                    # country. This makes that distinction visible instead
+                    # of asking the person to just trust it.
+                    "org": org,
+                    "looks_like_datacenter": any(
+                        kw in org.lower() for kw in
+                        ("google", "amazon", "microsoft", "azure", "cloud",
+                         "digitalocean", "linode", "vultr", "oracle", "hetzner",
+                         "ovh", "aws", "gcp")
+                    ),
                 }
         except Exception:
             continue

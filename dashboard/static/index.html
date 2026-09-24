@@ -94,12 +94,14 @@
   .welcome p{max-width:430px;margin:0 auto;font-size:13.5px;line-height:1.65;}
 
   /* Gauges */
-  .gauge-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
+  .gauge-row{background:var(--panel);border-radius:14px;display:grid;grid-template-columns:repeat(3,1fr);
+             margin-bottom:24px;overflow:hidden;}
   @media (max-width:760px){.gauge-row{grid-template-columns:1fr;}}
-  .gauge-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;
-              display:flex;flex-direction:column;align-items:center;}
-  .gauge-card .glabel{font-size:11.5px;color:var(--muted);font-weight:500;margin-bottom:4px;}
-  .gauge-card .gval{font-family:var(--font-display);font-size:28px;font-weight:600;margin-top:8px;letter-spacing:-.01em;}
+  .gauge-card{padding:24px 20px;display:flex;flex-direction:column;align-items:center;position:relative;}
+  .gauge-card:not(:last-child)::after{content:"";position:absolute;right:0;top:20%;bottom:20%;width:1px;background:var(--line);}
+  @media (max-width:760px){.gauge-card:not(:last-child)::after{display:none;}}
+  .gauge-card .glabel{font-size:12px;color:var(--muted);font-weight:500;margin-bottom:2px;}
+  .gauge-card .gval{font-family:var(--font-display);font-size:38px;font-weight:700;margin-top:2px;letter-spacing:-.02em;}
   .gauge-card .greason{font-size:11px;color:var(--muted-2);text-align:center;margin-top:8px;line-height:1.5;min-height:32px;}
 
   .cat-bar{display:flex;height:28px;border-radius:7px;overflow:hidden;border:1px solid var(--line);margin-bottom:10px;}
@@ -108,7 +110,7 @@
   .cat-legend span{display:inline-flex;align-items:center;gap:7px;}
   .cat-legend i{width:8px;height:8px;border-radius:2px;display:inline-block;}
 
-  .panel-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:18px;}
+  .panel-box{background:var(--panel);border-radius:12px;padding:20px 22px;margin-bottom:18px;}
   .panel-box h4{font-family:var(--font-display);margin:0 0 14px;font-size:14.5px;color:var(--text);font-weight:600;letter-spacing:-.005em;}
 
   .rca p{font-size:13.5px;line-height:1.7;margin:0 0 12px;color:var(--text);}
@@ -340,7 +342,8 @@ async function pollJob(jobId, capturedUrl){
       const proxyMsg = cs.proxy_used ? ' Routed via proxy.' : '';
       let geoMsg = '';
       if(cs.exit_geo && cs.exit_geo.country){
-        geoMsg = ` Exit location: ${cs.exit_geo.city ? cs.exit_geo.city+', ' : ''}${cs.exit_geo.country} (${cs.exit_geo.ip}).`;
+        const orgNote = cs.exit_geo.org ? ` Network: ${cs.exit_geo.org}${cs.exit_geo.looks_like_datacenter ? ' (cloud/datacenter — some sites block or challenge this)' : ' (residential/ISP)'}.` : '';
+        geoMsg = ` Exit location: ${cs.exit_geo.city ? cs.exit_geo.city+', ' : ''}${cs.exit_geo.country} (${cs.exit_geo.ip}).${orgNote}`;
       } else if(cs.proxy_used){
         geoMsg = ' Could not verify exit location (geo-IP lookup failed) — proxy may still be working, just unconfirmed.';
       }
@@ -443,15 +446,17 @@ function render(data){
     </div>
 
     ${plainSummary.length ? `
-    <div class="panel-box" style="border-color:#5b9bff44;background:#5b9bff0a;margin-bottom:18px;">
-      <h4 style="color:var(--info);">In plain English</h4>
-      <ul style="margin:0;padding-left:18px;">
-        ${plainSummary.map(line => `<li style="font-size:13px;line-height:1.65;margin-bottom:6px;">${escapeHtml(line)}</li>`).join('')}
-      </ul>
+    <div style="border-left:3px solid var(--info);padding:2px 0 4px 20px;margin-bottom:28px;">
+      <p style="font-family:var(--font-display);font-size:17px;line-height:1.5;font-weight:500;color:var(--text);margin:0 0 10px;letter-spacing:-.005em;">
+        ${escapeHtml(plainSummary[0])}
+      </p>
+      ${plainSummary.length > 1 ? `<ul style="margin:0;padding-left:16px;">
+        ${plainSummary.slice(1).map(line => `<li style="font-size:13px;line-height:1.65;margin-bottom:6px;color:var(--muted);">${escapeHtml(line)}</li>`).join('')}
+      </ul>` : ''}
     </div>` : ''}
 
     ${!s.has_ad_traffic ? `
-    <div class="panel-box" style="border-color:#f0a94066;background:#f0a94011;margin-bottom:18px;">
+    <div class="panel-box" style="border:1px solid #f0a94066;background:#f0a94011;margin-bottom:18px;">
       <h4 style="color:var(--warn);">No Ad Traffic Detected</h4>
       <p style="font-size:12.5px;line-height:1.6;">Zero OpenRTB/VAST/Display/Header-Bidding requests were captured — the gauges below are unscored (not a health measurement). See the Anomalies &amp; RCA tab for likely causes and what to check.</p>
     </div>` : ''}
