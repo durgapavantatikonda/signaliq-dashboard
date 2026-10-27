@@ -26,6 +26,7 @@ class TrafficEntry:
     time_ms: Optional[float] = None
     category: str = "Other"
     vendor: str = ""
+    page: str = ""  # which page of the site this request was captured on
 
     @property
     def request_json(self) -> Optional[Any]:
@@ -123,6 +124,7 @@ def _entries_from_capture(items: Iterable) -> list:
                 mime_type=item.get("mime_type", "") or item.get("mimeType", ""),
                 started_at=str(item.get("timestamp", "") or item.get("started_at", "")),
                 time_ms=item.get("time_ms") or item.get("time"),
+                page=str(item.get("page", "") or ""),
             )
         )
     return entries

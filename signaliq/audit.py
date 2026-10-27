@@ -45,6 +45,7 @@ class AuditResult:
                 "daily_revenue_risk": self.scores.daily_revenue_risk,
                 "risk_pct": self.scores.risk_pct,
                 "has_ad_traffic": self.scores.has_ad_traffic,
+                "scorable": self.scores.scorable,
             },
             "issues": [i.to_dict() for i in self.issues],
             "rca": {
@@ -218,21 +219,57 @@ def run_audit(source, target: str = "",
     ad_categories = {
         Category.OPENRTB.value, Category.VAST.value, Category.SSAI.value,
         Category.DISPLAY.value, Category.HEADER_BIDDING.value,
+        Category.AD_OTHER.value,
     }
     has_ad_traffic = sum(counts.get(c, 0) for c in ad_categories) > 0
+    # The scoring rules only know how to check OpenRTB bid requests and VAST
+    # responses; without any of those there is nothing to score.
+    scorable = (counts.get(Category.OPENRTB.value, 0) + counts.get(Category.VAST.value, 0)
+                + counts.get(Category.SSAI.value, 0)) > 0
 
-    scores = compute_scores(unique_issues, baseline_revenue, has_ad_traffic=has_ad_traffic)
+    scores = compute_scores(unique_issues, baseline_revenue,
+                            has_ad_traffic=has_ad_traffic, scorable=scorable)
     if not target:
         first = next((e.url for e in entries if e.url), "unknown-target")
         target = first.split("?")[0][:80]
 
-    rca = (_build_rca(unique_issues, entries) if has_ad_traffic
-           else _build_no_traffic_rca(entries, counts))
+    if not has_ad_traffic:
+        rca = _build_no_traffic_rca(entries, counts)
+    elif not scorable:
+        rca = _build_unscorable_rca(entries, counts)
+    else:
+        rca = _build_rca(unique_issues, entries)
 
     return AuditResult(
         audit_id=_gen_audit_id(), target=target, entries=entries,
         issues=unique_issues, scores=scores, category_counts=dict(counts),
         rca=rca,
+    )
+
+
+def _build_unscorable_rca(entries: list, counts: dict) -> RootCause:
+    ad_cats = ("Display Ad", "Header Bidding", "Other Ad", "Identity Sync",
+               "Verification", "Tracking Pixel")
+    parts = ", ".join(f"{c}: {counts[c]}" for c in ad_cats if counts.get(c))
+    return RootCause(
+        primary_finding="Ad activity was detected on this page, but there were "
+                        "no OpenRTB bid requests or VAST responses visible to "
+                        "validate, so no health scores can be given.",
+        causal_evidence=f"{len(entries)} requests captured. Ad-related traffic: "
+                        f"{parts or 'none'}.",
+        hypothesis="Browser-based ad delivery (Google Ad Manager tags, Prebid "
+                  "header bidding) usually runs its auctions server-side or "
+                  "inside iframes, so the browser only sees tag/pixel calls - "
+                  "the bid requests and VAST bodies the scoring rules check "
+                  "are not exposed. That is normal and is not itself a "
+                  "problem.",
+        recommended_actions=[
+            "Use the Audience & Signals tab to see which ad vendors fired and "
+            "which consent signals were sent.",
+            "Use Raw Traffic with the category filter to review every ad call.",
+            "For scored compliance checks, capture app/CTV traffic or paste a "
+            "HAR that includes OpenRTB/VAST bodies.",
+        ],
     )
 
 

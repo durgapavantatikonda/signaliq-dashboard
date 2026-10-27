@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from urllib.parse import urlparse
 
@@ -14,6 +15,7 @@ class Category(str, Enum):
     VAST = "VAST"
     SSAI = "SSAI"
     DISPLAY = "Display Ad"
+    AD_OTHER = "Other Ad"
     HEADER_BIDDING = "Header Bidding"
     IDENTITY_SYNC = "Identity Sync"
     VERIFICATION = "Verification"
@@ -41,6 +43,28 @@ TRACKING_TOKENS = (
 )
 
 
+# Heuristics for ad requests from vendors that aren't in vendors.py (regional
+# networks, or a publisher's own first-party ad server). Deliberately
+# conservative: whole host labels / path segments / specific parameters, not
+# loose substrings, so ordinary pages like "uploads.x.com" or "/loading"
+# don't match.
+_AD_HOST_RE = re.compile(
+    r"(^|\.)(ads?|adserver|adservice|adserv|adsystem|adx|advert[a-z]*|adtech|"
+    r"adnetwork|banners?|rtb|bidder|prebid|dsp|ssp)\d*\.", re.I)
+_AD_PATH_RE = re.compile(
+    r"(gampad|pagead|adserver|adserve|adframe|adunit|adslot|adsense|prebid|"
+    r"openrtb|vmap)|(^|/)(ads?|adv|adverts?|advertising|banners?|dfp)(/|\.|$)", re.I)
+_AD_PARAM_RE = re.compile(
+    r"(^|&)(adunit|ad_unit|adslot|ad_slot|adid|ad_id|adformat|ad_type|gdfp_req|"
+    r"bidder|bidid|placementid|placement_id|zoneid|zone_id|pubid|publisher_id)=|"
+    r"(^|&)iu=/", re.I)
+
+
+def _looks_like_ad(host: str, path: str, query: str) -> bool:
+    return bool(_AD_HOST_RE.search(host) or _AD_PATH_RE.search(path)
+                or _AD_PARAM_RE.search(query))
+
+
 def _is_openrtb(entry: TrafficEntry, url_l: str) -> bool:
     if "/openrtb" in url_l or "/bid" in url_l:
         return True
@@ -56,7 +80,7 @@ def _is_vast(entry: TrafficEntry, url_l: str) -> bool:
     if "output=vast" in url_l or "output=xml_vast" in url_l:
         return True
     resp = (entry.response_body or "").lstrip()[:2000].lower()
-    return "<vast" in resp
+    return "<vast" in resp or "<vmap:vmap" in resp or "<vmap " in resp
 
 
 def classify_entry(entry: TrafficEntry) -> Category:
@@ -75,6 +99,8 @@ def classify_entry(entry: TrafficEntry) -> Category:
     if vendor_match:
         group, _name = vendor_match
         return _VENDOR_GROUP_TO_CATEGORY.get(group, Category.OTHER)
+    if _looks_like_ad(host, path, parsed.query):
+        return Category.AD_OTHER
     if any(path.endswith(ext) for ext in MEDIA_EXTENSIONS):
         return Category.MEDIA
     if any(tok in url_l for tok in TRACKING_TOKENS):

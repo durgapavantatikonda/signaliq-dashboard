@@ -38,6 +38,7 @@ class Scores:
     risk_pct: int
     risk_reason: str
     has_ad_traffic: bool = True
+    scorable: bool = True
 
 
 def _dedupe(issues: list) -> list:
@@ -74,7 +75,7 @@ def _revenue_risk(issues, baseline):
 
 
 def compute_scores(issues: list, baseline_revenue: float = BASELINE_DAILY_REVENUE,
-                    has_ad_traffic: bool = True) -> Scores:
+                    has_ad_traffic: bool = True, scorable: bool = True) -> Scores:
     if not has_ad_traffic:
         # No OpenRTB/VAST/SSAI/Display/Header-Bidding traffic was captured at
         # all - there's nothing to score. Returning 100%/$0 here would read
@@ -86,6 +87,19 @@ def compute_scores(issues: list, baseline_revenue: float = BASELINE_DAILY_REVENU
             daily_revenue_risk=0.0, risk_pct=0,
             risk_reason="No ad traffic captured - nothing to score.",
             has_ad_traffic=False,
+        )
+    if not scorable:
+        # Ad requests exist, but none exposed an OpenRTB bid request or a
+        # VAST response body, which is all the scoring rules can check.
+        # Browser header bidding usually looks like this. A clean 100% here
+        # would only mean "nothing was tested", so report that instead.
+        return Scores(
+            signal_quality=ScoreBreakdown(score=None),
+            monetization=ScoreBreakdown(score=None),
+            daily_revenue_risk=0.0, risk_pct=0,
+            risk_reason="Ad requests were found, but none exposed an OpenRTB "
+                        "or VAST body to validate - nothing to score.",
+            has_ad_traffic=True, scorable=False,
         )
     unique = _dedupe(issues)
     risk, pct, reason = _revenue_risk(unique, baseline_revenue)

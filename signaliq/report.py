@@ -14,7 +14,9 @@ def render_markdown_report(result: AuditResult) -> str:
     s = result.scores
     audience = build_audience_profile(result.entries)
     display = build_display_signals(result.entries)
-    plain_summary = build_plain_summary(audience, display)
+    plain_summary = build_plain_summary(
+        audience, display,
+        {"other_ad_requests": sum(1 for e in result.entries if e.category == "Other Ad")})
 
     lines = []
     add = lines.append
@@ -43,6 +45,10 @@ def render_markdown_report(result: AuditResult) -> str:
         add("**No OpenRTB/VAST/Display/Header-Bidding traffic was captured - "
             "these scores are unscored (N/A), not a health measurement.** "
             "See the Root Cause Analysis section below for likely reasons.")
+    elif getattr(s, "scorable", True) is False:
+        add("**Ad requests were found, but none exposed an OpenRTB or VAST body "
+            "to validate, so these scores are N/A (nothing to score), not a "
+            "health measurement.**")
     add(f"*   **Signal Quality Score**: {_pct(s.signal_quality.score)}")
     add(f"*   **Monetization Readiness**: {_pct(s.monetization.score)}")
     add(f"*   **Daily Revenue Risk**: ${s.daily_revenue_risk:,.0f} "

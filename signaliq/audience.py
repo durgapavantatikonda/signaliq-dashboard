@@ -262,7 +262,7 @@ def build_display_signals(entries: list) -> dict:
     }
 
 
-def build_plain_summary(audience: dict, display: dict) -> list:
+def build_plain_summary(audience: dict, display: dict, extra: Optional[dict] = None) -> list:
     """Turn the OpenRTB audience profile + display/header-bidding signals
     into a handful of plain-English sentences a non-technical teammate can
     read without knowing what schain, EIDs, or TCF mean. This exists because
@@ -283,9 +283,47 @@ def build_plain_summary(audience: dict, display: dict) -> list:
         lines.append(f"This page shows ads through {len(names)} ad platform"
                      f"{'s' if len(names) != 1 else ''}: {shown}{more}.")
     else:
-        lines.append("No ad platforms were detected firing on this page during "
-                     "the capture - either it doesn't run programmatic ads, or "
-                     "they didn't load in time (try a longer capture duration).")
+        extra = extra or {}
+        other_ads = int(extra.get("other_ad_requests") or 0)
+        slots = int(extra.get("ad_slots") or 0)
+        video = int((extra.get("video_ads") or {}).get("requests") or 0)
+        if other_ads or slots or video:
+            found = []
+            if other_ads:
+                found.append(f"{other_ads} ad-like request{'s' if other_ads != 1 else ''}")
+            if slots:
+                found.append(f"{slots} ad slot{'s' if slots != 1 else ''} on the page")
+            if video:
+                found.append(f"{video} video ad request{'s' if video != 1 else ''}")
+            lines.append("Ad activity was found (" + ", ".join(found) + "), but none of "
+                         "it came from an ad platform in our vendor list. Review it under "
+                         "Raw Traffic (Other Ad)" + (", the Video Ads tab" if video else "")
+                         + " and the Ad slots panel.")
+        else:
+            lines.append("No ad platforms were detected firing on this page during "
+                         "the capture - either it doesn't run programmatic ads, or "
+                         "they didn't load in time (try a longer capture duration).")
+
+    bd = (extra or {}).get("bidding") or {}
+    if bd.get("refreshes"):
+        top = (bd.get("wins_by") or [{}])[0]
+        src = "" if (extra or {}).get("bidding_source") == "page" else " (reconstructed from network traffic)"
+        lines.append(f"Bidding: {bd['refreshes']} ad refresh(es) across {bd.get('slots', 0)} slot(s)"
+                     + (f", {bd['auctions']} header-bidding auction(s) averaging {bd.get('avg_bidders_per_auction', 0)} bidders each"
+                        if bd.get("auctions") else "")
+                     + (f". Most wins: {top.get('who')} ({top.get('wins')} of {bd['refreshes']})" if top.get("who") else "")
+                     + src + ". Details are in the Bid Winners tab.")
+
+    va = (extra or {}).get("video_ads") or {}
+    if va.get("requests"):
+        pos = va.get("positions") or {}
+        pos_text = ", ".join(f"{n} {k}" for k, n in
+                             (("pre-roll", pos.get("preroll")), ("mid-roll", pos.get("midroll")),
+                              ("post-roll", pos.get("postroll")), ("position unknown", pos.get("unknown"))) if n)
+        lines.append(f"Video ads: {va['requests']} video ad request{'s' if va['requests'] != 1 else ''}"
+                     + (f" ({pos_text})" if pos_text else "")
+                     + f"; {va.get('filled', 0)} filled, {va.get('no_fill', 0)} with no fill. "
+                       "Details are in the Video Ads tab.")
 
     id_providers = (profile.get("identity_providers") or [])
     if id_providers:

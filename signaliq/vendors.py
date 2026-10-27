@@ -18,6 +18,15 @@ AD_SERVERS = {
     "googlesyndication.com": "Google AdSense/AdX",
     "adservice.google.com": "Google Ad Service",
     "gads.pubmatic.com": "PubMatic Ad Server",
+    "doubleclick.net": "Google Ad Manager / DoubleClick",
+    "googletagservices.com": "Google Publisher Tag (GPT)",
+    "googleadservices.com": "Google Ads",
+    "adservice.google.": "Google Ad Service",
+    "2mdn.net": "Google Campaign Manager creatives",
+    "clmbtech.com": "Colombia (Times Internet)",
+    "smaato.net": "Smaato",
+    "inmobi.com": "InMobi",
+    "serving-sys.com": "Sizmek / Amazon Ads",
 }
 
 HEADER_BIDDING = {
@@ -57,6 +66,28 @@ HEADER_BIDDING = {
     "verizonmedia.com": "Verizon Media / Yahoo",
     "adsrvr.org": "The Trade Desk",
     "media.net": "Media.net",
+    "adnxs.com": "AppNexus / Xandr",
+    "rubiconproject.com": "Magnite (Rubicon)",
+    "pubmatic.com": "PubMatic",
+    "indexww.com": "Index Exchange",
+    "33across.com": "33Across",
+    "gumgum.com": "GumGum",
+    "triplelift.com": "TripleLift",
+    "conversantmedia.com": "Epsilon Conversant",
+    "emxdgt.com": "EMX Digital",
+    "contextweb.com": "PulsePoint",
+    "springserve.com": "SpringServe (Magnite)",
+    "bidswitch.net": "BidSwitch",
+    "taboola.com": "Taboola",
+    "outbrain.com": "Outbrain",
+    "mgid.com": "MGID",
+    "vdo.ai": "VDO.AI",
+    "adgebra.in": "Adgebra",
+    "zemanta.com": "Zemanta",
+    "connatix.com": "Connatix",
+    "primis.tech": "Primis",
+    "nativo.com": "Nativo",
+    "revcontent.com": "Revcontent",
 }
 
 IDENTITY_SYNC = {
@@ -74,6 +105,11 @@ IDENTITY_SYNC = {
     "unifiedid.com": "Unified ID 2.0",
     "uidapi.com": "Unified ID 2.0",
     "liveintent.com": "LiveIntent Identity",
+    "demdex.net": "Adobe Audience Manager",
+    "agkn.com": "Neustar / TransUnion",
+    "tapad.com": "Tapad",
+    "bluekai.com": "Oracle BlueKai",
+    "exelator.com": "Nielsen eXelate",
 }
 
 VERIFICATION = {
@@ -87,6 +123,7 @@ VERIFICATION = {
     "geo.moatads.com": "Moat Geo",
     "grapeshot.com": "GrapeShot Brand Safety (Oracle)",
     "adalytics.io": "Adalytics",
+    "iasds01.com": "Integral Ad Science (IAS)",
 }
 
 CONSENT_CMP = {
@@ -111,10 +148,16 @@ ALL_VENDOR_MAPS = {
 
 
 def match_vendor(host: str) -> tuple[str, str] | None:
-    """Return (group_label, vendor_name) for the first matching domain, or None."""
+    """Return (group_label, vendor_name) for the most specific matching
+    domain, or None. "Most specific" = longest matching domain text, so
+    cm.g.doubleclick.net is Google Cookie Match (identity sync) rather than
+    being swallowed by the broader doubleclick.net entry."""
     host = (host or "").lower()
+    best = None
+    best_len = -1
     for group, mapping in ALL_VENDOR_MAPS.items():
         for domain, name in mapping.items():
-            if domain in host:
-                return group, name
-    return None
+            if domain in host and len(domain) > best_len:
+                best = (group, name)
+                best_len = len(domain)
+    return best
