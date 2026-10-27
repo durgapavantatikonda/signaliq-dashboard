@@ -2,4 +2,4 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2.7
 playwright>=1.47
-mitmproxy>=10.3
+mitmproxy>=10.3; python_version < "3.13"

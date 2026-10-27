@@ -69,8 +69,14 @@ def start_proxy(port: int = 8080) -> dict:
         return {"status": "already_running", "ip": _local_ip(), "port": port,
                 "flows_so_far": len(_state["flows"])}
 
-    from mitmproxy.options import Options
-    from mitmproxy.tools.dump import DumpMaster
+    try:
+        from mitmproxy.options import Options
+        from mitmproxy.tools.dump import DumpMaster
+    except ImportError:
+        return {"status": "error",
+                "error": "Mobile / TV app capture needs the optional mitmproxy package, which is not "
+                         "installed here (it does not install on Python 3.13). Website captures are "
+                         "not affected."}
 
     _state["flows"] = []
     started = threading.Event()
