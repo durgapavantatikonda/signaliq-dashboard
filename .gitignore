@@ -5,3 +5,7 @@ sessions/*.json
 sessions/*.webm
 sessions/*.meta
 !sessions/.gitkeep
+sessions/.json
+sessions/.webm
+sessions/.meta
+sessions/creatives/
